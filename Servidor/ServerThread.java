@@ -1,4 +1,5 @@
 package Servidor;
+
 import java.io.*;
 import java.net.*;
 import java.util.HashMap;
@@ -13,7 +14,7 @@ public class ServerThread extends Thread {
 
     private static final int TAM_MAX_BUFFER = 512;
     private static final String COD_TEXTO = "UTF-8";
-    private static final File BASE_DIR = new File("Usuarios"); 
+    private static final File BASE_DIR = new File("Usuarios");
     private static final File ANON_DIR = new File("Usuarios/anonymous");
     private static final File USERS_FILE = new File("Usuarios/usuarios.txt");
 
@@ -32,18 +33,16 @@ public class ServerThread extends Thread {
 
         try {
             socket = new DatagramSocket(port);
-            System.out
-                    .println("Hilo escuchando en puerto " + port + " para cliente " + ipCliente + ":" + puertoCliente);
+            System.out.println("Hilo escuchando en puerto " + port + " para cliente " + ipCliente + ":" + puertoCliente);
 
             byte[] bufferReceive = new byte[TAM_MAX_BUFFER];
 
-            // Esperar login
             DatagramPacket loginPacket = new DatagramPacket(bufferReceive, bufferReceive.length);
             socket.receive(loginPacket);
             String loginMsg = new String(loginPacket.getData(), 0, loginPacket.getLength(), COD_TEXTO).trim();
 
             if (!loginMsg.startsWith("login ")) {
-                sendMsg(socket, "ERROR: Se esperaba comando login.", loginPacket);
+                sendMsg(socket, "ERROR: Debes Loguearte", loginPacket);
                 socket.close();
                 return;
             }
@@ -66,7 +65,7 @@ public class ServerThread extends Thread {
             } else if (usuarios.containsKey(usuario) && usuarios.get(usuario).equals(clave)) {
                 rootDir = new File(BASE_DIR, usuario);
             } else {
-                sendMsg(socket, "ERROR: Login incorrecto.", loginPacket);
+                sendMsg(socket, "ERROR: Login incorrecto la contraseña o el usuario no existen.", loginPacket);
                 socket.close();
                 return;
             }
@@ -81,7 +80,13 @@ public class ServerThread extends Thread {
                 socket.receive(packetReceiver);
                 String mensaje = new String(packetReceiver.getData(), 0, packetReceiver.getLength(), COD_TEXTO).trim();
 
-                if (mensaje.equalsIgnoreCase("disconnect") || mensaje.equalsIgnoreCase("FIN_FTP")) {
+                if (mensaje.equalsIgnoreCase("disconnect")) {
+                    System.out.println("El cliente en el puerto " + port + " se ha desconectado.");
+                    fin = true;
+                    continue;
+                }
+
+                if (mensaje.equalsIgnoreCase("FIN_FTP")) {
                     fin = true;
                     continue;
                 }
@@ -96,11 +101,18 @@ public class ServerThread extends Thread {
                         listado.append("Directorio vacío");
                     sendMsg(socket, listado.toString(), packetReceiver);
                 } else if (mensaje.startsWith("get ")) {
-                    File archivo = new File(rootDir, mensaje.substring(4).trim());
+                    String nombreArchivo = mensaje.substring(4).trim();
+                    if (!nombreArchivo.contains(".") || nombreArchivo.endsWith(".")) {
+                        sendMsg(socket, "ERROR: Debes incluir la extensión del archivo.", packetReceiver);
+                        continue;
+                    }
+
+                    File archivo = new File(rootDir, nombreArchivo);
                     if (!archivo.exists() || !archivo.isFile()) {
                         sendMsg(socket, "ERROR: Archivo no encontrado.", packetReceiver);
                         continue;
                     }
+
                     try (FileInputStream fis = new FileInputStream(archivo)) {
                         int leidos;
                         byte[] bufferArchivo = new byte[TAM_MAX_BUFFER];
@@ -112,8 +124,15 @@ public class ServerThread extends Thread {
                         }
                         sendMsg(socket, "FIN_FTP", packetReceiver);
                     }
+
                 } else if (!isAnonymous && mensaje.startsWith("remove ")) {
-                    File archivo = new File(rootDir, mensaje.substring(7).trim());
+                    String nombreArchivo = mensaje.substring(7).trim();
+                    if (!nombreArchivo.contains(".") || nombreArchivo.endsWith(".")) {
+                        sendMsg(socket, "ERROR: Debes incluir la extensión del archivo.", packetReceiver);
+                        continue;
+                    }
+
+                    File archivo = new File(rootDir, nombreArchivo);
                     String respuesta;
                     if (!archivo.exists())
                         respuesta = "ERROR: El archivo no existe.";
@@ -124,8 +143,17 @@ public class ServerThread extends Thread {
                     else
                         respuesta = "ERROR: No se pudo eliminar el archivo.";
                     sendMsg(socket, respuesta, packetReceiver);
+
+                } else if (isAnonymous && mensaje.startsWith("remove ")) {
+                    sendMsg(socket, "No tienes permiso para usar este comando", packetReceiver);
+
                 } else if (!isAnonymous && mensaje.startsWith("put ")) {
                     String nombreArchivo = mensaje.substring(4).trim();
+                    if (!nombreArchivo.contains(".") || nombreArchivo.endsWith(".")) {
+                        sendMsg(socket, "ERROR: El nombre del archivo debe incluir extensión.", packetReceiver);
+                        continue;
+                    }
+
                     File archivoDestino = new File(rootDir, nombreArchivo);
 
                     try (FileOutputStream fos = new FileOutputStream(archivoDestino)) {
@@ -133,15 +161,20 @@ public class ServerThread extends Thread {
                             DatagramPacket dataPacket = new DatagramPacket(bufferReceive, bufferReceive.length);
                             socket.receive(dataPacket);
                             String contenido = new String(dataPacket.getData(), 0, dataPacket.getLength(), COD_TEXTO);
-                            if (contenido.equals("FIN_FTP")) break;
+                            if (contenido.equals("FIN_FTP"))
+                                break;
                             fos.write(dataPacket.getData(), 0, dataPacket.getLength());
                         }
                         sendMsg(socket, "Archivo recibido correctamente.", packetReceiver);
                     } catch (IOException e) {
                         sendMsg(socket, "ERROR: No se pudo guardar el archivo.", packetReceiver);
                     }
-                } else {
-                    sendMsg(socket, "Comando no reconocido o no permitido.", packetReceiver);
+
+                } else if (isAnonymous && mensaje.startsWith("put ")) {
+                    sendMsg(socket, "No tienes permiso para usar este comando", packetReceiver);
+
+                // } else {
+                //     sendMsg(socket, "Comando no reconocido o no permitido.", packetReceiver);
                 }
             }
 

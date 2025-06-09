@@ -7,7 +7,6 @@ public class ClientTftp {
     private static final int PORT_CONNECT_TFTP = 44444;
     private static final int TAM_MAX_BUFFER = 512;
     private static final String COD_TEXTO = "UTF-8";
-    // private static final int TIME_MAX_LISTEN = 40000;
 
     private static String IP_SERVER;
     private static DatagramSocket socket;
@@ -17,7 +16,6 @@ public class ClientTftp {
         try {
             socket = new DatagramSocket();
             ipServer = InetAddress.getByName(IP_SERVER);
-            // socket.setSoTimeout(TIME_MAX_LISTEN);
 
             byte[] bufferSend = "Enviando petición de conexión".getBytes(COD_TEXTO);
             DatagramPacket sendPacket = new DatagramPacket(bufferSend, bufferSend.length, ipServer, PORT_CONNECT_TFTP);
@@ -46,13 +44,16 @@ public class ClientTftp {
 
             while (true) {
                 System.out.print("Comando TFTP: ");
-                String comando = sc.nextLine();
+                String comando = sc.nextLine().trim();
 
-                // PUT - subir archivo
                 if (comando.toLowerCase().startsWith("put ")) {
                     String nombreArchivo = comando.substring(4).trim();
-                    File archivoLocal = new File(nombreArchivo);
+                    if (!nombreArchivo.contains(".")) {
+                        System.out.println("ERROR: El nombre del archivo debe incluir una extensión.");
+                        continue;
+                    }
 
+                    File archivoLocal = new File(nombreArchivo);
                     if (!archivoLocal.exists()) {
                         System.out.println("ERROR: El archivo no existe localmente.");
                         continue;
@@ -83,6 +84,14 @@ public class ClientTftp {
                     continue;
                 }
 
+                if (comando.toLowerCase().startsWith("get ") || comando.toLowerCase().startsWith("remove ")) {
+                    String nombreArchivo = comando.substring(comando.indexOf(" ") + 1).trim();
+                    if (!nombreArchivo.contains(".")) {
+                        System.out.println("ERROR: El nombre del archivo debe incluir una extensión.");
+                        continue;
+                    }
+                }
+
                 byte[] bufferSend = comando.getBytes(COD_TEXTO);
                 DatagramPacket sendPacket = new DatagramPacket(bufferSend, bufferSend.length, ipServer, port);
                 socket.send(sendPacket);
@@ -92,20 +101,30 @@ public class ClientTftp {
 
                 if (comando.toLowerCase().startsWith("get ")) {
                     String nombreArchivo = comando.substring(4).trim();
+
+                    byte[] bufferRecv = new byte[TAM_MAX_BUFFER];
+                    DatagramPacket recvPacket = new DatagramPacket(bufferRecv, bufferRecv.length);
+                    socket.receive(recvPacket);
+
+                    String contenido = new String(recvPacket.getData(), 0, recvPacket.getLength(), COD_TEXTO);
+
+                    if (contenido.startsWith("ERROR")) {
+                        System.out.println(contenido);
+                        continue;
+                    }
+
                     File archivoDestino = new File(nombreArchivo);
                     try (FileOutputStream fos = new FileOutputStream(archivoDestino)) {
+                        fos.write(contenido.getBytes(COD_TEXTO)); 
+
                         while (true) {
-                            byte[] bufferRecv = new byte[TAM_MAX_BUFFER];
-                            DatagramPacket recvPacket = new DatagramPacket(bufferRecv, bufferRecv.length);
-                            socket.receive(recvPacket);
-                            String contenido = new String(recvPacket.getData(), 0, recvPacket.getLength(), COD_TEXTO);
-                            if (contenido.equals("FIN_FTP"))
+                            byte[] siguienteBuffer = new byte[TAM_MAX_BUFFER];
+                            DatagramPacket siguientePacket = new DatagramPacket(siguienteBuffer, siguienteBuffer.length);
+                            socket.receive(siguientePacket);
+                            String bloque = new String(siguientePacket.getData(), 0, siguientePacket.getLength(), COD_TEXTO);
+                            if (bloque.equals("FIN_FTP"))
                                 break;
-                            if (contenido.startsWith("ERROR")) {
-                                System.out.println(contenido);
-                                break;
-                            }
-                            fos.write(recvPacket.getData(), 0, recvPacket.getLength());
+                            fos.write(siguientePacket.getData(), 0, siguientePacket.getLength());
                         }
                         System.out.println("Archivo recibido correctamente.");
                     }
