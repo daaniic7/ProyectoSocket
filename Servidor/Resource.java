@@ -1,3 +1,4 @@
+package Servidor;
 public class Resource {
     int portMin = 50000;
     int portAsign;

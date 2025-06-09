@@ -1,3 +1,4 @@
+package Servidor;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -7,7 +8,7 @@ public class ServerTftp {
     private static final int PORT_CONNECT_TFTP = 44444;
     private static final int TAM_MAX_BUFFER = 512;
     private static final String COD_TEXTO = "UTF-8";
-    private static final int TIME_MAX_LISTEN = 10000;
+    // private static final int TIME_MAX_LISTEN = 10000;
 
     private static DatagramSocket socket;
 
@@ -17,7 +18,7 @@ public class ServerTftp {
 
         try {
             socket = new DatagramSocket(PORT_CONNECT_TFTP);
-            socket.setSoTimeout(TIME_MAX_LISTEN);
+            // socket.setSoTimeout(TIME_MAX_LISTEN);
 
             while (!r.endClient()) {
                 try {
