@@ -1,1 +1,1 @@
-archivo 1 de Dani editado y mandado de nuevo con un push
+archivo 1 de Dani editado y mandado de nuevo con un put
