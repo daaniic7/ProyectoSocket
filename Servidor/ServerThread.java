@@ -41,8 +41,11 @@ public class ServerThread extends Thread {
             socket.receive(loginPacket);
             String loginMsg = new String(loginPacket.getData(), 0, loginPacket.getLength(), COD_TEXTO).trim();
 
+            System.out.println("Intento de login: " + loginMsg);
+
             if (!loginMsg.startsWith("login ")) {
                 sendMsg(socket, "ERROR: Debes Loguearte", loginPacket);
+                System.out.println("Login fallido: formato incorrecto");
                 socket.close();
                 return;
             }
@@ -50,6 +53,7 @@ public class ServerThread extends Thread {
             String[] parts = loginMsg.split(" ");
             if (parts.length != 3) {
                 sendMsg(socket, "ERROR: Formato de login incorrecto.", loginPacket);
+                System.out.println("Login fallido: formato incorrecto");
                 socket.close();
                 return;
             }
@@ -62,10 +66,13 @@ public class ServerThread extends Thread {
             if (usuario.equals("anonymous") && clave.equals("anonymous")) {
                 rootDir = ANON_DIR;
                 isAnonymous = true;
+                System.out.println("Login anónimo aceptado");
             } else if (usuarios.containsKey(usuario) && usuarios.get(usuario).equals(clave)) {
                 rootDir = new File(BASE_DIR, usuario);
+                System.out.println("Login correcto para usuario: " + usuario);
             } else {
                 sendMsg(socket, "ERROR: Login incorrecto la contraseña o el usuario no existen.", loginPacket);
+                System.out.println("Login fallido para usuario: " + usuario);
                 socket.close();
                 return;
             }
@@ -80,8 +87,11 @@ public class ServerThread extends Thread {
                 socket.receive(packetReceiver);
                 String mensaje = new String(packetReceiver.getData(), 0, packetReceiver.getLength(), COD_TEXTO).trim();
 
+                System.out.println("Comando recibido de " + usuario + ": " + mensaje);
+
                 if (mensaje.equalsIgnoreCase("disconnect")) {
                     System.out.println("El cliente en el puerto " + port + " se ha desconectado.");
+                    sendMsg(socket, "Desconexión exitosa. ¡Hasta pronto!", packetReceiver);
                     fin = true;
                     continue;
                 }
@@ -100,19 +110,23 @@ public class ServerThread extends Thread {
                     } else
                         listado.append("Directorio vacío");
                     sendMsg(socket, listado.toString(), packetReceiver);
+                    System.out.println("Listado enviado a " + usuario);
                 } else if (mensaje.startsWith("get ")) {
                     String nombreArchivo = mensaje.substring(4).trim();
                     if (!nombreArchivo.contains(".") || nombreArchivo.endsWith(".")) {
                         sendMsg(socket, "ERROR: Debes incluir la extensión del archivo.", packetReceiver);
+                        System.out.println("Error en get: extensión inválida");
                         continue;
                     }
 
                     File archivo = new File(rootDir, nombreArchivo);
                     if (!archivo.exists() || !archivo.isFile()) {
                         sendMsg(socket, "ERROR: Archivo no encontrado.", packetReceiver);
+                        System.out.println("Error en get: archivo no encontrado");
                         continue;
                     }
 
+                    sendMsg(socket, "Iniciando transferencia de " + nombreArchivo, packetReceiver);
                     try (FileInputStream fis = new FileInputStream(archivo)) {
                         int leidos;
                         byte[] bufferArchivo = new byte[TAM_MAX_BUFFER];
@@ -123,39 +137,49 @@ public class ServerThread extends Thread {
                             Thread.sleep(10);
                         }
                         sendMsg(socket, "FIN_FTP", packetReceiver);
+                        System.out.println("Archivo " + nombreArchivo + " enviado a " + usuario);
                     }
 
                 } else if (!isAnonymous && mensaje.startsWith("remove ")) {
                     String nombreArchivo = mensaje.substring(7).trim();
                     if (!nombreArchivo.contains(".") || nombreArchivo.endsWith(".")) {
                         sendMsg(socket, "ERROR: Debes incluir la extensión del archivo.", packetReceiver);
+                        System.out.println("Error en remove: extensión inválida");
                         continue;
                     }
 
                     File archivo = new File(rootDir, nombreArchivo);
                     String respuesta;
-                    if (!archivo.exists())
+                    if (!archivo.exists()) {
                         respuesta = "ERROR: El archivo no existe.";
-                    else if (!archivo.isFile())
+                        System.out.println("Error en remove: archivo no existe");
+                    } else if (!archivo.isFile()) {
                         respuesta = "ERROR: No es un archivo válido.";
-                    else if (archivo.delete())
+                        System.out.println("Error en remove: no es archivo válido");
+                    } else if (archivo.delete()) {
                         respuesta = "Archivo eliminado correctamente.";
-                    else
+                        System.out.println("Archivo " + nombreArchivo + " eliminado por " + usuario);
+                    } else {
                         respuesta = "ERROR: No se pudo eliminar el archivo.";
+                        System.out.println("Error en remove: fallo al eliminar");
+                    }
                     sendMsg(socket, respuesta, packetReceiver);
 
                 } else if (isAnonymous && mensaje.startsWith("remove ")) {
                     sendMsg(socket, "No tienes permiso para usar este comando", packetReceiver);
+                    System.out.println("Intento de remove por usuario anónimo");
 
                 } else if (!isAnonymous && mensaje.startsWith("put ")) {
                     String nombreArchivo = mensaje.substring(4).trim();
                     if (!nombreArchivo.contains(".") || nombreArchivo.endsWith(".")) {
                         sendMsg(socket, "ERROR: El nombre del archivo debe incluir extensión.", packetReceiver);
+                        System.out.println("Error en put: extensión inválida");
                         continue;
                     }
 
                     File archivoDestino = new File(rootDir, nombreArchivo);
 
+                    sendMsg(socket, "Preparado para recibir " + nombreArchivo, packetReceiver);
                     try (FileOutputStream fos = new FileOutputStream(archivoDestino)) {
                         while (true) {
                             DatagramPacket dataPacket = new DatagramPacket(bufferReceive, bufferReceive.length);
@@ -166,15 +190,19 @@ public class ServerThread extends Thread {
                             fos.write(dataPacket.getData(), 0, dataPacket.getLength());
                         }
                         sendMsg(socket, "Archivo recibido correctamente.", packetReceiver);
+                        System.out.println("Archivo " + nombreArchivo + " recibido de " + usuario);
                     } catch (IOException e) {
                         sendMsg(socket, "ERROR: No se pudo guardar el archivo.", packetReceiver);
+                        System.out.println("Error en put: fallo al guardar archivo");
                     }
 
                 } else if (isAnonymous && mensaje.startsWith("put ")) {
                     sendMsg(socket, "No tienes permiso para usar este comando", packetReceiver);
+                    System.out.println("Intento de put por usuario anónimo");
 
-                // } else {
-                //     sendMsg(socket, "Comando no reconocido o no permitido.", packetReceiver);
+                } else {
+                    sendMsg(socket, "Comando no reconocido o no permitido.", packetReceiver);
+                    System.out.println("Comando no reconocido: " + mensaje);
                 }
             }
 
