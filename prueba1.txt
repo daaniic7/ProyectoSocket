@@ -1,1 +1,0 @@
-Archivo recibido correctamente.Iniciando transferencia de prueba1.txtesto es una prueba de put, he hecho un remove y ahora voy a hacer otro put 
